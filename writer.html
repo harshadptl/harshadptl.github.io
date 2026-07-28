@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>untitled.md</title>
+<style>
+  /* ---------- tokens ---------- */
+  :root{
+    --paper:      #EFEFF2;
+    --ink:        #17151C;
+    --ink-soft:   #6B6874;
+    --rule:       #DAD9E0;
+    --accent:     #4A3AA8;
+    --accent-dim: rgba(74, 58, 168, .14);
+    --field:      rgba(23, 21, 28, .04);
+
+    --measure: 68ch;
+    --size: 19px;
+    --face: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, system-ui, sans-serif;
+    --ease: cubic-bezier(.2,.7,.3,1);
+  }
+  html[data-theme="ink"]{
+    --paper:      #131118;
+    --ink:        #DEDBE4;
+    --ink-soft:   #7C7789;
+    --rule:       #272231;
+    --accent:     #A48FFF;
+    --accent-dim: rgba(164, 143, 255, .18);
+    --field:      rgba(222, 219, 228, .06);
+  }
+  html[data-face="sans"]{ --face: var(--sans); }
+  html[data-face="mono"]{ --face: var(--mono); }
+  html[data-width="narrow"]{ --measure: 54ch; }
+  html[data-width="wide"]{   --measure: 82ch; }
+
+  *{ box-sizing: border-box; }
+  html, body{ height: 100%; }
+  body{
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--face);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    transition: background .4s var(--ease), color .4s var(--ease);
+  }
+  ::selection{ background: var(--accent-dim); }
+
+  .chrome{
+    position: fixed; left: 0; right: 0; z-index: 20;
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px max(18px, env(safe-area-inset-left)) 14px max(18px, env(safe-area-inset-right));
+    font-family: var(--mono);
+    font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--ink-soft);
+    transition: opacity .45s var(--ease), transform .45s var(--ease);
+  }
+  .chrome.top{ top: 0; }
+  .chrome.bottom{ bottom: 0; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  body.typing .chrome{ opacity: 0; pointer-events: none; }
+  body.typing .top{ transform: translateY(-4px); }
+  body.typing .bottom{ transform: translateY(4px); }
+  body.typing #editor{ cursor: none; }
+
+  /* filename + dirty mark */
+  .doc{ display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .dot{
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent); flex: none;
+    opacity: 0; transition: opacity .25s var(--ease);
+    transform: translateY(-1px);
+  }
+  body.dirty .dot{ opacity: 1; }
+  #filename{
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--ink); letter-spacing: .1em;
+  }
+  .spacer{ flex: 1 1 auto; }
+
+  /* buttons */
+  button{
+    font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+    background: none; border: 0; padding: 5px 8px; margin: 0;
+    border-radius: 5px; cursor: pointer;
+    transition: color .2s var(--ease), background .2s var(--ease);
+  }
+  button:hover{ color: var(--ink); background: var(--field); }
+  button:focus-visible, [tabindex]:focus-visible{
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .bar{ display: flex; align-items: center; gap: 2px; }
+  .bar .sep{ width: 1px; height: 13px; background: var(--rule); margin: 0 6px; }
+
+  /* ---------- writing surface ---------- */
+  #stage{
+    position: absolute; inset: 0;
+    display: flex; justify-content: center;
+  }
+  #editor, #preview{
+    width: 100%; max-width: var(--measure); min-width: 0;
+    padding: 22vh 24px 34vh;
+    font-family: var(--face);
+    font-size: var(--size);
+    line-height: 1.72;
+    color: var(--ink);
+  }
+  #editor{
+    border: 0; outline: 0; resize: none; background: none;
+    overflow-y: auto; overscroll-behavior: contain;
+    caret-color: var(--accent);
+    tab-size: 2;
+  }
+  html[data-typewriter="on"] #editor{ padding-bottom: 62vh; }
+  #editor::placeholder{ color: var(--ink-soft); opacity: .55; }
+  #editor::-webkit-scrollbar{ width: 0; }
+  #editor{ scrollbar-width: none; }
+
+  #mirror{
+    position: absolute; top: 0; left: -99999px;
+    visibility: hidden; white-space: pre-wrap; word-wrap: break-word;
+  }
+
+  /* ---------- preview ---------- */
+  #preview{ overflow-y: auto; display: none; }
+  html[data-mode="preview"] #preview{ display: block; }
+  html[data-mode="preview"] #editor{ display: none; }
+  #preview::-webkit-scrollbar{ width: 0; }
+  #preview{ scrollbar-width: none; }
+
+  #preview > :first-child{ margin-top: 0; }
+  #preview h1, #preview h2, #preview h3, #preview h4, #preview h5, #preview h6{
+    font-weight: 600; line-height: 1.25; letter-spacing: -.012em;
+    margin: 1.9em 0 .55em;
+  }
+  #preview h1{ font-size: 1.75em; }
+  #preview h2{ font-size: 1.38em; }
+  #preview h3{ font-size: 1.14em; }
+  #preview h4, #preview h5, #preview h6{ font-size: 1em; }
+  #preview h5, #preview h6{ color: var(--ink-soft); }
+  #preview p, #preview ul, #preview ol, #preview blockquote, #preview pre, #preview table{
+    margin: 0 0 1.15em;
+  }
+  #preview li{ margin: .2em 0; }
+  #preview li > ul, #preview li > ol{ margin: .2em 0; }
+  #preview a{ color: var(--accent); text-underline-offset: .18em; }
+  #preview blockquote{
+    margin-left: 0; padding-left: 1.2em;
+    border-left: 2px solid var(--accent); color: var(--ink-soft);
+  }
+  #preview code{
+    font-family: var(--mono); font-size: .85em;
+    background: var(--field); padding: .12em .35em; border-radius: 4px;
+  }
+  #preview pre{
+    font-family: var(--mono); font-size: .82em; line-height: 1.6;
+    background: var(--field); padding: 14px 16px; border-radius: 8px;
+    overflow-x: auto;
+  }
+  #preview pre code{ background: none; padding: 0; font-size: 1em; }
+  #preview hr{ border: 0; border-top: 1px solid var(--rule); margin: 2.2em 0; }
+  #preview img{ max-width: 100%; border-radius: 6px; }
+  #preview table{ border-collapse: collapse; width: 100%; font-size: .92em; }
+  #preview th, #preview td{ border: 1px solid var(--rule); padding: .45em .7em; text-align: left; }
+  #preview th{ font-weight: 600; background: var(--field); }
+  #preview input[type=checkbox]{ margin-right: .4em; accent-color: var(--accent); }
+  #preview ul:has(> li > input[type=checkbox]){ list-style: none; padding-left: .2em; }
+
+  /* ---------- ink well (session meter) ---------- */
+  .well{ display: flex; align-items: center; gap: 9px; padding: 4px 6px; }
+  .well svg{ width: 19px; height: 19px; display: block; overflow: visible; }
+  .well-ring{ fill: none; stroke: var(--ink-soft); stroke-width: 1.25; opacity: .5; }
+  .well-fill{ fill: var(--accent); transition: y .6s var(--ease); }
+  .well.full .well-ring{ stroke: var(--accent); opacity: 1; }
+  .well.full{ color: var(--accent); }
+  #wellLabel{ font-variant-numeric: tabular-nums; }
+
+  /* ---------- settings ---------- */
+  #panel{
+    position: fixed; z-index: 40; top: 52px; right: 16px; width: 264px;
+    background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 12px;
+    box-shadow: 0 18px 44px rgba(0,0,0,.16);
+    padding: 6px; font-family: var(--mono); font-size: 11px;
+    letter-spacing: .06em; color: var(--ink-soft);
+    display: none;
+    transform-origin: top right;
+    animation: pop .18s var(--ease);
+  }
+  #panel.open{ display: block; }
+  @keyframes pop{ from{ opacity: 0; transform: scale(.97) translateY(-4px); } }
+  .row{
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 7px 8px;
+  }
+  .row + .row{ border-top: 1px solid var(--rule); }
+  .row label{ text-transform: uppercase; letter-spacing: .11em; }
+  .seg{ display: flex; gap: 1px; background: var(--field); border-radius: 6px; padding: 2px; }
+  .seg button{
+    padding: 3px 7px; border-radius: 4px; font-size: 10px;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+  .seg button[aria-pressed="true"]{ background: var(--paper); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .stepper{ display: flex; align-items: center; gap: 2px; }
+  .stepper span{ min-width: 26px; text-align: center; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .switch{
+    width: 30px; height: 17px; border-radius: 9px; padding: 0;
+    background: var(--field); position: relative; flex: none;
+  }
+  .switch::after{
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--ink-soft); transition: transform .2s var(--ease), background .2s var(--ease);
+  }
+  .switch[aria-pressed="true"]{ background: var(--accent-dim); }
+  .switch[aria-pressed="true"]::after{ transform: translateX(13px); background: var(--accent); }
+  #goal{
+    width: 62px; font: inherit; font-family: var(--mono); color: var(--ink);
+    background: var(--field); border: 0; border-radius: 5px;
+    padding: 4px 6px; text-align: right;
+  }
+  #goal:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+  .note{ padding: 8px; line-height: 1.55; text-transform: none; letter-spacing: .02em; border-top: 1px solid var(--rule); }
+
+  /* ---------- keys overlay ---------- */
+  #keys{
+    position: fixed; inset: 0; z-index: 50;
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    backdrop-filter: blur(6px);
+    display: none; place-items: center;
+    padding: 24px;
+  }
+  #keys.open{ display: grid; }
+  .keys-card{ width: min(440px, 100%); }
+  .keys-card h2{
+    font-family: var(--face); font-size: 1.5rem; font-weight: 600;
+    letter-spacing: -.015em; margin: 0 0 20px; color: var(--ink);
+  }
+  .keys-card dl{
+    margin: 0; font-family: var(--mono); font-size: 12px; color: var(--ink-soft);
+    display: grid; grid-template-columns: auto 1fr; gap: 0;
+  }
+  .keys-card dt{
+    color: var(--ink); padding: 7px 14px 7px 0; white-space: nowrap;
+    border-bottom: 1px solid var(--rule);
+  }
+  .keys-card dd{
+    margin: 0; padding: 7px 0; text-align: right;
+    border-bottom: 1px solid var(--rule);
+  }
+  .keys-card p{ font-family: var(--mono); font-size: 11px; margin: 18px 0 0; letter-spacing: .06em; text-transform: uppercase; }
+
+  /* ---------- toast ---------- */
+  #toast{
+    position: fixed; z-index: 60; left: 50%; bottom: 54px;
+    transform: translate(-50%, 8px);
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--paper); background: var(--ink);
+    padding: 8px 14px; border-radius: 999px;
+    opacity: 0; pointer-events: none;
+    transition: opacity .28s var(--ease), transform .28s var(--ease);
+  }
+  #toast.show{ opacity: 1; transform: translate(-50%, 0); }
+
+  body.drop::after{
+    content: ""; position: fixed; inset: 10px; z-index: 70;
+    border: 1.5px dashed var(--accent); border-radius: 14px; pointer-events: none;
+  }
+
+  @media (max-width: 640px){
+    .chrome{ font-size: 10px; gap: 8px; padding-left: 12px; padding-right: 12px; }
+    .bar .sep{ margin: 0 2px; }
+    #editor, #preview{ padding: 15vh 20px 40vh; }
+    #panel{ right: 10px; left: 10px; width: auto; }
+    body.typing .chrome{ opacity: 0; }
+    .hide-sm{ display: none; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="chrome top">
+  <div class="doc">
+    <span class="dot" aria-hidden="true"></span>
+    <span id="filename">untitled.md</span>
+  </div>
+  <div class="spacer"></div>
+  <nav class="bar">
+    <button id="btnNew" class="hide-sm" title="New document (Ctrl+N)">New</button>
+    <button id="btnOpen" title="Open a .md file (Ctrl+O)">Open</button>
+    <button id="btnSave" title="Save to disk (Ctrl+S)">Save</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button id="btnPreview" aria-pressed="false" title="Read the rendered page (Ctrl+E)">Read</button>
+    <button id="btnPanel" aria-expanded="false" title="Settings">Aa</button>
+  </nav>
+</header>
+
+<main id="stage">
+  <textarea id="editor" spellcheck="true" autocomplete="off" autocapitalize="sentences"
+    placeholder="Start writing."></textarea>
+  <article id="preview"></article>
+  <div id="mirror" aria-hidden="true"></div>
+</main>
+
+<footer class="chrome bottom">
+  <span id="stats">0 words</span>
+  <div class="spacer"></div>
+  <button id="btnKeys" title="Keyboard shortcuts (Ctrl+/)">Keys</button>
+  <button id="wellBtn" class="well" title="Session progress — click to set a goal">
+    <span id="wellLabel">0</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <defs><clipPath id="wellClip"><circle cx="12" cy="12" r="9"/></clipPath></defs>
+      <rect class="well-fill" id="wellFill" clip-path="url(#wellClip)" x="3" y="21" width="18" height="20"/>
+      <circle class="well-ring" cx="12" cy="12" r="9"/>
+    </svg>
+  </button>
+</footer>
+
+<div id="panel" role="dialog" aria-label="Settings">
+  <div class="row">
+    <label>Paper</label>
+    <div class="seg" data-setting="theme">
+      <button data-value="paper" aria-pressed="true">Light</button>
+      <button data-value="ink" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>Typeface</label>
+    <div class="seg" data-setting="face">
+      <button data-value="serif" aria-pressed="true">Serif</button>
+      <button data-value="sans" aria-pressed="false">Sans</button>
+      <button data-value="mono" aria-pressed="false">Mono</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>Text size</label>
+    <div class="stepper">
+      <button id="sizeDown" aria-label="Smaller text">−</button>
+      <span id="sizeVal">19</span>
+      <button id="sizeUp" aria-label="Larger text">+</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>Line width</label>
+    <div class="seg" data-setting="width">
+      <button data-value="narrow" aria-pressed="false">S</button>
+      <button data-value="normal" aria-pressed="true">M</button>
+      <button data-value="wide" aria-pressed="false">L</button>
+    </div>
+  </div>
+  <div class="row">
+    <label for="tw">Typewriter scroll</label>
+    <button id="tw" class="switch" role="switch" aria-pressed="true" aria-label="Typewriter scrolling"></button>
+  </div>
+  <div class="row">
+    <label for="auto">Save automatically</label>
+    <button id="auto" class="switch" role="switch" aria-pressed="true" aria-label="Save automatically"></button>
+  </div>
+  <div class="row">
+    <label for="spell">Check spelling</label>
+    <button id="spell" class="switch" role="switch" aria-pressed="true" aria-label="Check spelling"></button>
+  </div>
+  <div class="row">
+    <label for="goal">Session goal</label>
+    <input id="goal" type="number" min="0" step="50" value="500" aria-label="Session word goal">
+  </div>
+  <p class="note" id="fsNote" hidden></p>
+</div>
+
+<div id="keys" role="dialog" aria-label="Keyboard shortcuts">
+  <div class="keys-card">
+    <h2>Shortcuts</h2>
+    <dl>
+      <dt>Save</dt><dd data-mod>Ctrl S</dd>
+      <dt>Save as a new file</dt><dd data-mod>Ctrl Shift S</dd>
+      <dt>Open a file</dt><dd data-mod>Ctrl O</dd>
+      <dt>New document</dt><dd data-mod>Ctrl N</dd>
+      <dt>Read / write</dt><dd data-mod>Ctrl E</dd>
+      <dt>Bold</dt><dd data-mod>Ctrl B</dd>
+      <dt>Italic</dt><dd data-mod>Ctrl I</dd>
+      <dt>Link</dt><dd data-mod>Ctrl K</dd>
+      <dt>Indent / outdent</dt><dd>Tab / Shift Tab</dd>
+      <dt>This list</dt><dd data-mod>Ctrl /</dd>
+    </dl>
+    <p>The bar hides while you type. Move the mouse or press Escape to bring it back.</p>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<input id="fileInput" type="file" accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain"
+  style="position:fixed;left:-9999px;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
+
+<script>
+(function(){
+  "use strict";
+
+  var editor   = document.getElementById('editor');
+  var preview  = document.getElementById('preview');
+  var mirror   = document.getElementById('mirror');
+  var filename = document.getElementById('filename');
+  var stats    = document.getElementById('stats');
+  var panel    = document.getElementById('panel');
+  var keys     = document.getElementById('keys');
+  var toastEl  = document.getElementById('toast');
+  var wellFill = document.getElementById('wellFill');
+  var wellBtn  = document.getElementById('wellBtn');
+  var wellLbl  = document.getElementById('wellLabel');
+  var fileInput= document.getElementById('fileInput');
+  var root     = document.documentElement;
+
+  var hasFS = typeof window.showSaveFilePicker === 'function';
+  var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+  var handle = null;          // FileSystemFileHandle when the file lives on disk
+  var lastSaved = '';         // text as it exists in the file
+  var name = 'untitled.md';
+  var baseline = 0;           // word count when this session started
+  var autosave = true, typewriter = true;
+  var saveTimer = null, toastTimer = null;
+
+  /* ================= markdown ================= */
+
+  function esc(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function safeUrl(u){
+    var t = u.trim();
+    return /^\s*javascript:/i.test(t.replace(/&#\w+;/g,'')) ? '#' : t;
+  }
+  function inline(s){
+    var codes = [];
+    s = s.replace(/`([^`\n]+)`/g, function(m, c){ codes.push(c); return '\u0001' + (codes.length - 1) + '\u0001'; });
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)/g, function(m, a, u){
+      return '<img src="' + safeUrl(u) + '" alt="' + a + '">';
+    });
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)/g, function(m, t, u){
+      return '<a href="' + safeUrl(u) + '" target="_blank" rel="noopener noreferrer">' + t + '</a>';
+    });
+    s = s.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^\w\\])__([^_]+)__(?![\w])/g, '$1<strong>$2</strong>');
+    s = s.replace(/(^|[^*\\])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    s = s.replace(/(^|[^\w\\])_([^_\n]+)_(?![\w])/g, '$1<em>$2</em>');
+    s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+    s = s.replace(/\u0001(\d+)\u0001/g, function(m, i){ return '<code>' + codes[+i] + '</code>'; });
+    return s;
+  }
+
+  var ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+  var FENCE = /^\s*(```|~~~)(.*)$/;
+  var HEAD = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
+  var RULE = /^\s*(?:-\s*){3,}$|^\s*(?:\*\s*){3,}$|^\s*(?:_\s*){3,}$/;
+  var TROW = /^\s*\|(.+)\|\s*$/;
+  var TSEP = /^\s*\|?[\s:-]*\|[\s:|-]*$/;
+
+  function listItem(it){
+    var t = it.text;
+    var task = t.match(/^\[([ xX])\]\s+(.*)$/);
+    if (task) {
+      return '<input type="checkbox" disabled' + (task[1] === ' ' ? '' : ' checked') + '>' + inline(task[2]);
+    }
+    return inline(t);
+  }
+
+  /* after a blank line, only keep collecting if it is the same list */
+  function sameList(first, line){
+    var m = line.match(ITEM);
+    var indent = m[1].replace(/\t/g, '    ').length;
+    return indent > first.indent || /\d/.test(m[2]) === first.ordered;
+  }
+
+  function renderList(items){
+    var idx = 0;
+    function build(level){
+      var ordered = items[idx].ordered;
+      var html = ordered ? '<ol>' : '<ul>';
+      var open = false;
+      while (idx < items.length && items[idx].indent >= level) {
+        if (items[idx].indent > level) { html += build(items[idx].indent); continue; }
+        if (items[idx].ordered !== ordered) break;
+        if (open) html += '</li>';
+        html += '<li>' + listItem(items[idx]);
+        open = true; idx++;
+      }
+      if (open) html += '</li>';
+      return html + (ordered ? '</ol>' : '</ul>');
+    }
+    var out = '';
+    while (idx < items.length) out += build(items[idx].indent);
+    return out;
+  }
+
+  function md(src){
+    var lines = esc(String(src).replace(/\r\n?/g, '\n')).split('\n');
+    var out = [], i = 0;
+
+    while (i < lines.length) {
+      var line = lines[i];
+
+      if (FENCE.test(line)) {
+        var f = line.match(FENCE);
+        var lang = (f[2] || '').trim().split(/\s+/)[0];
+        var buf = []; i++;
+        while (i < lines.length && !new RegExp('^\\s*' + f[1]).test(lines[i])) { buf.push(lines[i]); i++; }
+        i++;
+        out.push('<pre><code' + (lang ? ' class="lang-' + lang.replace(/[^\w-]/g, '') + '"' : '') + '>' + buf.join('\n') + '</code></pre>');
+        continue;
+      }
+      if (!line.trim()) { i++; continue; }
+      if (RULE.test(line)) { out.push('<hr>'); i++; continue; }
+
+      var h = line.match(HEAD);
+      if (h) { out.push('<h' + h[1].length + '>' + inline(h[2]) + '</h' + h[1].length + '>'); i++; continue; }
+
+      if (/^\s*&gt;/.test(line)) {
+        var quote = [];
+        while (i < lines.length && /^\s*&gt;/.test(lines[i])) {
+          quote.push(lines[i].replace(/^\s*&gt;\s?/, '')); i++;
+        }
+        out.push('<blockquote>' + md(unesc(quote.join('\n'))) + '</blockquote>');
+        continue;
+      }
+
+      if (TROW.test(line) && lines[i + 1] && TSEP.test(lines[i + 1]) && lines[i + 1].indexOf('-') > -1) {
+        var cells = function(l){ return l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(function(c){ return inline(c.trim()); }); };
+        var head = cells(line); i += 2;
+        var body = '';
+        while (i < lines.length && TROW.test(lines[i])) {
+          body += '<tr><td>' + cells(lines[i]).join('</td><td>') + '</td></tr>'; i++;
+        }
+        out.push('<table><thead><tr><th>' + head.join('</th><th>') + '</th></tr></thead><tbody>' + body + '</tbody></table>');
+        continue;
+      }
+
+      if (ITEM.test(line)) {
+        var items = [];
+        while (i < lines.length) {
+          var m = lines[i].match(ITEM);
+          if (m) {
+            items.push({ indent: m[1].replace(/\t/g, '    ').length, ordered: /\d/.test(m[2]), text: m[3] });
+            i++;
+          } else if (!lines[i].trim() && lines[i + 1] && ITEM.test(lines[i + 1]) && sameList(items[0], lines[i + 1])) {
+            i++;
+          } else if (items.length && /^\s+\S/.test(lines[i])) {
+            items[items.length - 1].text += ' ' + lines[i].trim(); i++;
+          } else break;
+        }
+        out.push(renderList(items));
+        continue;
+      }
+
+      var para = [];
+      while (i < lines.length && lines[i].trim() && !RULE.test(lines[i]) && !HEAD.test(lines[i]) &&
+             !ITEM.test(lines[i]) && !FENCE.test(lines[i]) && !/^\s*&gt;/.test(lines[i])) {
+        para.push(lines[i]); i++;
+      }
+      out.push('<p>' + inline(para.join('\n')).replace(/ {2,}\n|\\\n/g, '<br>').replace(/\n/g, ' ') + '</p>');
+    }
+    return out.join('\n');
+  }
+
+  function unesc(s){
+    return s.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+  }
+
+  /* ================= document state ================= */
+
+  function words(t){
+    var m = t.trim().match(/[\w'’\u00C0-\u024F\u0400-\u04FF-]+/g);
+    return m ? m.length : 0;
+  }
+
+  function suggestedName(){
+    var t = editor.value.trim();
+    var first = (t.split('\n').find(function(l){ return l.trim(); }) || '').replace(/^#+\s*/, '');
+    var slug = first.toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 48);
+    return (slug || 'untitled') + '.md';
+  }
+
+  function markDirty(){
+    var dirty = editor.value !== lastSaved;
+    document.body.classList.toggle('dirty', dirty);
+    document.title = (dirty ? '• ' : '') + name;
+    return dirty;
+  }
+
+  function markSaved(newName){
+    if (newName) name = newName;
+    lastSaved = editor.value;
+    filename.textContent = name;
+    markDirty();
+  }
+
+  function updateStats(){
+    var w = words(editor.value);
+    var mins = Math.max(1, Math.round(w / 230));
+    stats.textContent = w.toLocaleString() + (w === 1 ? ' word' : ' words') +
+      (w ? '  ·  ' + editor.value.length.toLocaleString() + ' chars  ·  ' + mins + ' min read' : '');
+
+    var session = Math.max(0, w - baseline);
+    var goal = Math.max(0, parseInt(document.getElementById('goal').value, 10) || 0);
+    wellLbl.textContent = session.toLocaleString() + (goal ? ' / ' + goal : '');
+    var p = goal ? Math.min(1, session / goal) : 0;
+    wellFill.setAttribute('y', String(21 - 18 * p));
+    wellBtn.classList.toggle('full', goal > 0 && session >= goal);
+    wellBtn.title = goal ? session + ' of ' + goal + ' words this session' : 'Set a session goal';
+  }
+
+  /* ================= files ================= */
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
+  }
+
+  function confirmDiscard(){
+    return !markDirty() || confirm('This document has unsaved changes. Discard them?');
+  }
+
+  function loadText(text, fileName, fileHandle){
+    editor.value = text;
+    handle = fileHandle || null;
+    name = fileName || 'untitled.md';
+    baseline = words(text);
+    markSaved(name);
+    updateStats();
+    editor.setSelectionRange(text.length, text.length);
+    editor.focus();
+    render();
+    scrollCaret(true);
+  }
+
+  var mdTypes = [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdown', '.txt'] } }];
+
+  async function openFile(){
+    if (!confirmDiscard()) return;
+    if (!hasFS) { fileInput.click(); return; }
+    try {
+      var picked = await window.showOpenFilePicker({ types: mdTypes, multiple: false });
+      var h = picked[0];
+      var file = await h.getFile();
+      loadText(await file.text(), file.name, h);
+      toast('Opened ' + file.name);
+    } catch (err) { if (err.name !== 'AbortError') toast("Couldn't open that file"); }
+  }
+
+  async function ensurePermission(h){
+    if (!h.queryPermission) return true;
+    if (await h.queryPermission({ mode: 'readwrite' }) === 'granted') return true;
+    return await h.requestPermission({ mode: 'readwrite' }) === 'granted';
+  }
+
+  async function writeTo(h){
+    var w = await h.createWritable();
+    await w.write(editor.value);
+    await w.close();
+  }
+
+  async function save(silent){
+    if (!hasFS) return download();
+    if (!handle) return saveAs();
+    try {
+      if (!(await ensurePermission(handle))) { toast('Permission denied — use Save as'); return; }
+      await writeTo(handle);
+      markSaved();
+      if (!silent) toast('Saved ' + name);
+    } catch (err) {
+      toast("Couldn't save — use Save as");
+    }
+  }
+
+  async function saveAs(){
+    if (!hasFS) return download();
+    try {
+      var h = await window.showSaveFilePicker({ suggestedName: handle ? name : suggestedName(), types: mdTypes });
+      handle = h;
+      await writeTo(h);
+      markSaved(h.name);
+      toast('Saved ' + h.name);
+    } catch (err) { if (err.name !== 'AbortError') toast("Couldn't save that file"); }
+  }
+
+  function download(){
+    var n = handle ? name : suggestedName();
+    var url;
+    try {
+      url = URL.createObjectURL(new Blob([editor.value], { type: 'text/markdown;charset=utf-8' }));
+    } catch (err) {
+      toast("Couldn't prepare the file"); return;
+    }
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = n;
+    a.rel = 'noopener';
+    a.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+    document.body.appendChild(a);          // Firefox only follows a link that is in the document
+    try {
+      a.click();
+    } catch (err) {
+      a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    }
+    setTimeout(function(){
+      if (a.parentNode) a.parentNode.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 4000);
+    markSaved(n);
+    toast('Saved ' + n + ' to your downloads');
+  }
+
+  fileInput.addEventListener('change', function(){
+    var f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    f.text().then(function(t){ loadText(t, f.name, null); toast('Opened ' + f.name); });
+    fileInput.value = '';
+  });
+
+  function newDoc(){
+    if (!confirmDiscard()) return;
+    loadText('', 'untitled.md', null);
+    toast('New document');
+  }
+
+  /* drag a file onto the page */
+  ['dragenter', 'dragover'].forEach(function(ev){
+    document.addEventListener(ev, function(e){ e.preventDefault(); document.body.classList.add('drop'); });
+  });
+  ['dragleave', 'drop'].forEach(function(ev){
+    document.addEventListener(ev, function(e){
+      if (ev === 'dragleave' && e.relatedTarget) return;
+      document.body.classList.remove('drop');
+    });
+  });
+  document.addEventListener('drop', async function(e){
+    e.preventDefault();
+    var item = e.dataTransfer.items && e.dataTransfer.items[0];
+    if (!item) return;
+    if (!confirmDiscard()) return;
+    if (item.getAsFileSystemHandle) {
+      try {
+        var h = await item.getAsFileSystemHandle();
+        if (h && h.kind === 'file') {
+          var file = await h.getFile();
+          loadText(await file.text(), file.name, h);
+          return toast('Opened ' + file.name);
+        }
+      } catch (err) { /* fall through */ }
+    }
+    var f = e.dataTransfer.files[0];
+    if (f) f.text().then(function(t){ loadText(t, f.name, null); toast('Opened ' + f.name); });
+  });
+
+  /* ================= editing ================= */
+
+  function insert(text){
+    editor.focus();
+    var ok = false;
+    try {
+      ok = text === '' ? document.execCommand('delete') : document.execCommand('insertText', false, text);
+    } catch (e) { ok = false; }
+    if (!ok) {
+      var s = editor.selectionStart, en = editor.selectionEnd;
+      editor.setRangeText(text, s, en, 'end');
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  function wrap(mark){
+    var s = editor.selectionStart, e = editor.selectionEnd;
+    var sel = editor.value.slice(s, e);
+    var before = editor.value.slice(s - mark.length, s);
+    var after = editor.value.slice(e, e + mark.length);
+    if (before === mark && after === mark) {           // unwrap
+      editor.setSelectionRange(s - mark.length, e + mark.length);
+      insert(sel);
+      editor.setSelectionRange(s - mark.length, e - mark.length);
+      return;
+    }
+    insert(mark + sel + mark);
+    if (sel) editor.setSelectionRange(s + mark.length, e + mark.length);
+    else editor.setSelectionRange(s + mark.length, s + mark.length);
+  }
+
+  function link(){
+    var s = editor.selectionStart, e = editor.selectionEnd;
+    var sel = editor.value.slice(s, e);
+    insert('[' + sel + '](url)');
+    var at = s + 1 + sel.length + 2;
+    editor.setSelectionRange(at, at + 3);
+  }
+
+  function indentSelection(out){
+    var v = editor.value, s = editor.selectionStart, e = editor.selectionEnd;
+    var start = v.lastIndexOf('\n', s - 1) + 1;
+    var end = v.indexOf('\n', e); if (end === -1) end = v.length;
+    var block = v.slice(start, end);
+    var changed = block.split('\n').map(function(l){
+      return out ? l.replace(/^ {1,2}|^\t/, '') : '  ' + l;
+    }).join('\n');
+    editor.setSelectionRange(start, end);
+    insert(changed);
+    editor.setSelectionRange(start, start + changed.length);
+  }
+
+  function continueList(){
+    var v = editor.value, pos = editor.selectionStart;
+    var start = v.lastIndexOf('\n', pos - 1) + 1;
+    var line = v.slice(start, pos);
+    var m = line.match(/^(\s*)([-*+]|(\d+)[.)])(\s+)(\[[ xX]\]\s+)?(.*)$/);
+    if (!m) return false;
+    if (!m[6].trim()) {                                  // empty item: end the list
+      editor.setSelectionRange(start, pos);
+      insert('');
+      return true;
+    }
+    var marker = m[3] ? (parseInt(m[3], 10) + 1) + m[2].slice(-1) : m[2];
+    insert('\n' + m[1] + marker + m[4] + (m[5] ? '[ ] ' : ''));
+    return true;
+  }
+
+  /* typewriter scrolling — measure the caret with a mirrored block */
+  var mirrorStale = true;
+  window.addEventListener('resize', function(){ mirrorStale = true; scrollCaret(true); });
+
+  function caretTop(){
+    if (mirrorStale) {
+      var cs = getComputedStyle(editor);
+      ['fontFamily','fontSize','fontWeight','fontStyle','letterSpacing','lineHeight','textTransform',
+       'paddingTop','paddingRight','paddingBottom','paddingLeft','borderWidth','textIndent','wordSpacing','tabSize']
+        .forEach(function(p){ mirror.style[p] = cs[p]; });
+      mirror.style.width = editor.clientWidth + 'px';
+      mirror.style.boxSizing = cs.boxSizing;
+      mirrorStale = false;
+    }
+    mirror.textContent = editor.value.slice(0, editor.selectionEnd);
+    var probe = document.createElement('span');
+    probe.textContent = '\u200b';
+    mirror.appendChild(probe);
+    var top = probe.offsetTop;
+    mirror.removeChild(probe);
+    return top;
+  }
+
+  var pending = false;
+  function scrollCaret(instant){
+    if (!typewriter || root.dataset.mode === 'preview') return;
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function(){ pending = false; place(instant); });
+  }
+
+  function place(instant){
+    var target = caretTop() - editor.clientHeight * 0.42;
+    var next = Math.max(0, Math.min(target, editor.scrollHeight - editor.clientHeight));
+    if (instant || Math.abs(next - editor.scrollTop) > editor.clientHeight * 0.6) editor.scrollTop = next;
+    else editor.scrollTo({ top: next, behavior: 'smooth' });
+  }
+
+  /* ================= view ================= */
+
+  function render(){
+    if (root.dataset.mode === 'preview') preview.innerHTML = md(editor.value);
+  }
+
+  function setMode(mode){
+    root.dataset.mode = mode;
+    var on = mode === 'preview';
+    document.getElementById('btnPreview').setAttribute('aria-pressed', String(on));
+    document.getElementById('btnPreview').textContent = on ? 'Write' : 'Read';
+    if (on) { render(); preview.scrollTop = 0; }
+    else { editor.focus(); scrollCaret(true); }
+    document.body.classList.remove('typing');
+  }
+
+  document.getElementById('stage').addEventListener('mousedown', function(e){
+    if (e.target === this && root.dataset.mode !== 'preview') { e.preventDefault(); editor.focus(); }
+  });
+
+  function typingMode(){
+    document.body.classList.add('typing');
+  }
+  document.addEventListener('mousemove', function(){ document.body.classList.remove('typing'); });
+  document.addEventListener('touchstart', function(){ document.body.classList.remove('typing'); }, { passive: true });
+  editor.addEventListener('blur', function(){ document.body.classList.remove('typing'); });
+
+  editor.addEventListener('input', function(){
+    markDirty();
+    updateStats();
+    typingMode();
+    scrollCaret(false);
+    if (autosave && handle) {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function(){ if (markDirty()) save(true); }, 1200);
+    }
+  });
+
+  document.addEventListener('selectionchange', function(){
+    if (document.activeElement === editor) scrollCaret(false);
+  });
+
+  editor.addEventListener('keydown', function(e){
+    var mod = e.metaKey || e.ctrlKey;
+    if (e.key === 'Tab' && !mod) {
+      e.preventDefault();
+      if (e.shiftKey || editor.selectionStart !== editor.selectionEnd) indentSelection(e.shiftKey);
+      else insert('  ');
+      return;
+    }
+    if (e.key === 'Enter' && !mod && !e.shiftKey) {
+      if (continueList()) e.preventDefault();
+    }
+  });
+
+  /* ================= shortcuts ================= */
+
+  document.addEventListener('keydown', function(e){
+    var mod = e.metaKey || e.ctrlKey;
+    if (e.key === 'Escape') {
+      if (keys.classList.contains('open')) return closeKeys();
+      if (panel.classList.contains('open')) return closePanel();
+      if (root.dataset.mode === 'preview') return setMode('write');
+      document.body.classList.remove('typing');
+      return;
+    }
+    if (!mod) return;
+    var k = e.key.toLowerCase();
+    if (k === 's') { e.preventDefault(); e.shiftKey ? saveAs() : save(false); }
+    else if (k === 'o') { e.preventDefault(); openFile(); }
+    else if (k === 'n') { e.preventDefault(); newDoc(); }
+    else if (k === 'e') { e.preventDefault(); setMode(root.dataset.mode === 'preview' ? 'write' : 'preview'); }
+    else if (k === 'b') { e.preventDefault(); wrap('**'); }
+    else if (k === 'i') { e.preventDefault(); wrap('*'); }
+    else if (k === 'k') { e.preventDefault(); link(); }
+    else if (k === '/') { e.preventDefault(); keys.classList.contains('open') ? closeKeys() : openKeys(); }
+  });
+
+  window.addEventListener('beforeunload', function(e){
+    if (markDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden && autosave && handle && markDirty()) save(true);
+  });
+
+  /* ================= chrome wiring ================= */
+
+  function openPanel(){ panel.classList.add('open'); document.getElementById('btnPanel').setAttribute('aria-expanded', 'true'); }
+  function closePanel(){ panel.classList.remove('open'); document.getElementById('btnPanel').setAttribute('aria-expanded', 'false'); }
+  function openKeys(){ keys.classList.add('open'); }
+  function closeKeys(){ keys.classList.remove('open'); editor.focus(); }
+
+  document.getElementById('btnNew').onclick = newDoc;
+  document.getElementById('btnOpen').onclick = openFile;
+  document.getElementById('btnSave').onclick = function(e){ e.shiftKey ? saveAs() : save(false); };
+  document.getElementById('btnPreview').onclick = function(){ setMode(root.dataset.mode === 'preview' ? 'write' : 'preview'); };
+  document.getElementById('btnPanel').onclick = function(e){
+    e.stopPropagation();
+    panel.classList.contains('open') ? closePanel() : openPanel();
+  };
+  document.getElementById('btnKeys').onclick = openKeys;
+  wellBtn.onclick = function(e){ e.stopPropagation(); openPanel(); document.getElementById('goal').focus(); };
+  keys.onclick = closeKeys;
+  panel.onclick = function(e){ e.stopPropagation(); };
+  document.addEventListener('click', function(){ if (panel.classList.contains('open')) closePanel(); });
+
+  document.querySelectorAll('.seg').forEach(function(seg){
+    seg.addEventListener('click', function(e){
+      var b = e.target.closest('button'); if (!b) return;
+      seg.querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-pressed', String(x === b)); });
+      root.dataset[seg.dataset.setting] = b.dataset.value;
+      mirrorStale = true;
+      scrollCaret(true);
+    });
+  });
+
+  var size = 19;
+  function setSize(n){
+    size = Math.max(14, Math.min(28, n));
+    root.style.setProperty('--size', size + 'px');
+    document.getElementById('sizeVal').textContent = size;
+    mirrorStale = true;
+    scrollCaret(true);
+  }
+  document.getElementById('sizeUp').onclick = function(){ setSize(size + 1); };
+  document.getElementById('sizeDown').onclick = function(){ setSize(size - 1); };
+
+  function toggle(el, fn){
+    el.onclick = function(){
+      var on = el.getAttribute('aria-pressed') !== 'true';
+      el.setAttribute('aria-pressed', String(on));
+      fn(on);
+    };
+  }
+  toggle(document.getElementById('tw'), function(on){
+    typewriter = on;
+    root.dataset.typewriter = on ? 'on' : 'off';
+    mirrorStale = true;
+    if (on) scrollCaret(true);
+  });
+  toggle(document.getElementById('auto'), function(on){ autosave = on; });
+  toggle(document.getElementById('spell'), function(on){ editor.spellcheck = on; editor.blur(); editor.focus(); });
+  document.getElementById('goal').addEventListener('input', updateStats);
+
+  /* ================= start ================= */
+
+  root.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'ink' : 'paper';
+  document.querySelector('.seg[data-setting="theme"] button[data-value="' + root.dataset.theme + '"]')
+    .parentNode.querySelectorAll('button').forEach(function(b){
+      b.setAttribute('aria-pressed', String(b.dataset.value === root.dataset.theme));
+    });
+  root.dataset.mode = 'write';
+  root.dataset.width = 'normal';
+  root.dataset.face = 'serif';
+  root.dataset.typewriter = 'on';
+
+  if (isMac) {
+    document.querySelectorAll('#keys dd[data-mod]').forEach(function(d){
+      d.textContent = d.textContent.replace('Ctrl', '⌘').replace('Shift', '⇧');
+    });
+  }
+  if (!hasFS) {
+    var note = document.getElementById('fsNote');
+    note.hidden = false;
+    note.textContent = 'This browser can’t write to files in place. Save downloads a copy instead — Chrome or Edge on desktop can update the original file.';
+  }
+
+  editor.value = '';
+  markSaved('untitled.md');
+  updateStats();
+  editor.focus();
+})();
+</script>
+</body>
+</html>
